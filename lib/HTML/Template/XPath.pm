@@ -9,7 +9,7 @@ use IO::Handle;
 use Carp;
 
 use vars qw($VERSION);
-$VERSION = '0.09';
+$VERSION = '0.10';
 
 
 # these global vars are initialised and then they are readonly!
@@ -231,35 +231,27 @@ sub _get_document_xpath {
 sub _get_xp {
   my ($xpt, $xml_filename, $context) = @_;
 
-  if(exists $xpt->{xp}->{$xml_filename}){
+  if ( $context ) {
+    return $context;
+  } elsif(exists $xpt->{xp}->{$xml_filename}){
     return $xpt->{xp}->{$xml_filename};
-  } else {
-    my $xp;
-    my $parser = XML::LibXML->new;
-    if($context){
-      $xp = $context;
-    } else {
-      my $filename = "$xpt->{root_dir}/$xml_filename";
-#    die "Can't load $filename" unless
-#      (-e "$filename");
-#    die "Can't load content file $filename" unless
-#      (-e "$filename");
-      unless( -f $filename ) {
-	warn "Can't load content file $filename";
-	return;
-      }
-
-      my $xpt_handle = IO::File->new("<$filename") or die "can not open $filename";
-      $xp = $parser->parse_fh($xpt_handle);
-      $xpt_handle->close;
-
-      # get default context (root XML element)
-      $xpt->{root_element_node}->{$xml_filename} = $xp->documentElement;
-
-      $xpt->{xp}->{$xml_filename} = $xp;
-    }
-    return $xp;
   }
+
+  my $filename = "$xpt->{root_dir}/$xml_filename";
+  unless( -f $filename ) {
+    warn "Can't load content file $filename";
+    return;
+  }
+
+  my $parser = XML::LibXML->new;
+  my $xpt_handle = IO::File->new("<$filename") or die "can not open $filename";
+  my $xp = $parser->parse_fh($xpt_handle);
+  $xpt_handle->close;
+  # get default context (root XML element)
+  $xpt->{root_element_node}->{$xml_filename} = $xp->documentElement;
+
+  $xpt->{xp}->{$xml_filename} = $xp;
+  return $xp;
 }
 
 sub _get_xpath_langs {
@@ -282,7 +274,7 @@ sub _get_xpath_langs {
   for my $node ($nodeset->get_nodelist) {
     my $nodeset = $node->findnodes(q{ancestor-or-self::*[@xml:lang]});
     for my $node ($nodeset->get_nodelist) {
-      my $lang = $node->getAttribute('xml:lang');
+      my $lang = $node->getAttributeNS('http://www.w3.org/XML/1998/namespace','lang');
       $lang{$lang} = 1;
     }
     $return_nodeset->push($node) if $nodeset->size > 0;
@@ -419,7 +411,7 @@ Output:
 
 This is an easy to use templating system for extracting content from XML
 files.  It is based on L<HTML::Template>'s <TMPL_VAR> and <TMPL_LOOP> tags
-and uses L<XML::LibXML>'s XPath functions to extract the requested XML content.
+and uses L<XML::LibXML>'s XPath function to extract the requested XML content.
 
 It has built-in support for language localization.
 
