@@ -1,5 +1,9 @@
 Revision history for Perl extension HTML::Template::XPath.
 
+0.09  March 25, 2002
+	- Fix for passing filehandles to XML::LibXML under 5.005_03
+	    (Tatsuhiko Miyagawa)
+
 0.08  March 22, 2002
 	- Renamed XML::XPathTemplate to HTML::Template::XPath
 	  and released as stand-alone module outside of PageKit.

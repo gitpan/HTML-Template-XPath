@@ -3,12 +3,13 @@ package HTML::Template::XPath;
 use strict;
 use XML::LibXML;
 use HTML::Template;
+use IO::File;
 use IO::Handle;
 
 use Carp;
 
 use vars qw($VERSION);
-$VERSION = '0.08';
+$VERSION = '0.09';
 
 
 # these global vars are initialised and then they are readonly!
@@ -48,10 +49,10 @@ sub process {
   if($opt{xpt_filename}){
     local($/) = undef;
     my $filename = "$xpt->{root_dir}/$opt{xpt_filename}";
-    open XPT, "$filename" or die "can't open $filename for reading";
-    my $xpt_template = <XPT>;
+    my $xpt_handle = IO::File->new($filename) or die "can't open $filename for reading";
+    my $xpt_template = <$xpt_handle>;
     $xpt_template_ref = \$xpt_template;
-    close XPT;
+    $xpt_handle->close;
   } elsif ($opt{xpt_scalarref}){
     $xpt_template_ref = $opt{xpt_scalarref};
   }
@@ -248,9 +249,9 @@ sub _get_xp {
 	return;
       }
 
-      open XPT_FH, "<$filename" or die "can not open $filename";
-      $xp = $parser->parse_fh(\*XPT_FH);
-      close XPT_FH;
+      my $xpt_handle = IO::File->new("<$filename") or die "can not open $filename";
+      $xp = $parser->parse_fh($xpt_handle);
+      $xpt_handle->close;
 
       # get default context (root XML element)
       $xpt->{root_element_node}->{$xml_filename} = $xp->documentElement;
@@ -338,7 +339,7 @@ __END__
 
 =head1 NAME
 
-HTML::Template::XPath - Easy access to XML files using XML::LibXML and HTML::Template
+HTML::Template::XPath - Easy access to XML files from HTML::Template using XPath
 
 =head1 SYNOPSIS
 
@@ -418,7 +419,7 @@ Output:
 
 This is an easy to use templating system for extracting content from XML
 files.  It is based on L<HTML::Template>'s <TMPL_VAR> and <TMPL_LOOP> tags
-and uses L<XML::LibXML> to extract the requested XML content.
+and uses L<XML::LibXML>'s XPath functions to extract the requested XML content.
 
 It has built-in support for language localization.
 
@@ -466,13 +467,14 @@ the end of the xpath query.
 Fixes, Bug Reports, Docs have been generously provided by:
 
   Boris Zentner
+  Tatsuhiko Miyagawa
   Matt Churchyard
 
 Thanks!
 
 =head1 COPYRIGHT
 
-Copyright (c) 2001, 2002 T.J. Mather.  All rights Reserved.
+Copyright (c) 2002 T.J. Mather.  All rights Reserved.
 
 This package is free software; you
 can redistribute it and/or modify it under the same terms
