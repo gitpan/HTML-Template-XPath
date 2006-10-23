@@ -9,8 +9,11 @@ use IO::Handle;
 use Carp;
 
 use vars qw($VERSION);
-$VERSION = '0.10';
+$VERSION = '0.20';
 
+use constant XML_SOURCE_FILE   => 1;
+use constant XML_SOURCE_TEXT   => 2;
+use constant XML_SOURCE_LIBXML => 3;
 
 # these global vars are initialised and then they are readonly!
 # this is done here mainly for speed.
@@ -83,6 +86,12 @@ sub process {
 
     $$xpt_template_ref =~ s^<CONTENT_(\w+(?:$key_value_pattern)*)/?>^<TMPL_$1>^ig;
   }
+  $opt{xml_filename} and $xpt->{_xml_source} =   XML_SOURCE_FILE;
+  $opt{xml_text}     and $xpt->{_xml_source} =   XML_SOURCE_TEXT;
+  # not implemented yet..
+#  $opt{xml_parser}   and $xpt->{_xml_source} = XML_SOURCE_LIBXML;
+  $opt{xml_filename} ||= $opt{xml_text};
+  die "No XML source - expected filename, text, or parser" unless $xpt->{_xml_source};
   $xpt->_fill_in_content($xpt_template_ref, $opt{xml_filename}, $opt{lang}, $opt{check_for_other_lang});
 
   return $xpt->{lang}->{$opt{lang}};
@@ -100,10 +109,15 @@ sub process_all_lang {
 
 sub _add_content_mtime {
   my ($xpt, $xml_filename) = @_;
-  my $filename = "$xpt->{root_dir}/$xml_filename";
-  return if exists $xpt->{file_mtimes}->{$filename};
-  my $mtime = (stat($filename))[9];
-  $xpt->{file_mtimes}->{$filename} = $mtime;
+  if ($xpt->{_xml_source} == XML_SOURCE_FILE) {
+    my $filename = "$xpt->{root_dir}/$xml_filename";
+    return if exists $xpt->{file_mtimes}->{$filename};
+    my $mtime = (stat($filename))[9];
+    $xpt->{file_mtimes}->{$filename} = $mtime;
+  } else {
+    # Hrm.. use some sort of hashing of the actual text here?
+    $xpt->{file_mtimes}->{_text} = time();
+  }
 }
 
 sub _fill_in_content {
@@ -233,24 +247,34 @@ sub _get_xp {
 
   if ( $context ) {
     return $context;
-  } elsif(exists $xpt->{xp}->{$xml_filename}){
-    return $xpt->{xp}->{$xml_filename};
+  } elsif(exists $xpt->{xp}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)}){
+    return $xpt->{xp}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)};
   }
 
-  my $filename = "$xpt->{root_dir}/$xml_filename";
-  unless( -f $filename ) {
-    warn "Can't load content file $filename";
-    return;
+  my $xp;
+  if ($xpt->{_xml_source} == XML_SOURCE_FILE) {
+
+    my $filename = "$xpt->{root_dir}/$xml_filename";
+    unless( -f $filename ) {
+      warn "Can't load content file $filename";
+      return;
+    }
+
+    my $parser = XML::LibXML->new;
+    my $xpt_handle = IO::File->new("<$filename") or die "can not open $filename";
+    $xp = $parser->parse_fh($xpt_handle);
+    $xpt_handle->close;
+    # get default context (root XML element)
+    $xpt->{root_element_node}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)} = $xp->documentElement;
+
+    $xpt->{xp}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)} = $xp;
+  } elsif ($xpt->{_xml_source} == XML_SOURCE_TEXT) {
+    my $parser = XML::LibXML->new;
+    $xp = $parser->parse_string($xml_filename);
+    $xpt->{root_element_node}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)}
+      = $xp->documentElement;
+    $xpt->{xp}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)} = $xp;
   }
-
-  my $parser = XML::LibXML->new;
-  my $xpt_handle = IO::File->new("<$filename") or die "can not open $filename";
-  my $xp = $parser->parse_fh($xpt_handle);
-  $xpt_handle->close;
-  # get default context (root XML element)
-  $xpt->{root_element_node}->{$xml_filename} = $xp->documentElement;
-
-  $xpt->{xp}->{$xml_filename} = $xp;
   return $xp;
 }
 
@@ -258,12 +282,12 @@ sub _get_xpath_langs {
   my ($xpt, %arg) = @_;
 
   my $xml_filename = $arg{xml_filename};
-  my $context = $arg{context} || $xpt->{root_element_node}->{$xml_filename};
+  my $context = $arg{context} || $xpt->{root_element_node}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)};
   my $xp = $xpt->_get_xp($xml_filename, $context);
   return [] unless $xp;
 
   my $xpath = $arg{xpath};
-  $context ||= $xpt->{root_element_node}->{$xml_filename};
+  $context ||= $xpt->{root_element_node}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)};
 
   my $nodeset = $context->findnodes($xpath);
 
@@ -294,7 +318,7 @@ sub _get_xpath_nodeset {
   return $return_nodeset unless $xp;
   my $xpath = $arg{xpath};
   my $lang = $arg{lang};
-  $context ||= $xpt->{root_element_node}->{$xml_filename};
+  $context ||= $xpt->{root_element_node}->{_hash_or_file($xpt->{_xml_source}, $xml_filename)};
 
   my $nodeset = $context->find($xpath);
   my @nodelist = $nodeset->get_nodelist;
@@ -324,6 +348,21 @@ sub _get_xpath_nodeset {
   # this is undocumented and subject to change!
   return $nodeset;
 }
+
+
+
+#============================================================
+# Returns the filename or a simple hash of the text.
+#============================================================
+sub _hash_or_file
+{
+  my ($type, $data) = @_;
+  return $data if $type == XML_SOURCE_FILE;
+  use Digest::MD5 qw(md5_base64);
+  return md5_base64($data);
+}
+
+
 
 1;
 
@@ -430,6 +469,13 @@ Processes an XPath Template file and XML file in a specified language.
   my $output = $xpt->process(xpt_scalarref => $xpt_scalarref,
 			     xml_filename => $xml_filename,
 			     lang => 'en');
+
+  my $output = $xpt->process(xpt_scalarref => $xpt_scalarref,
+			     xml_text      => $xml_text,
+			     lang => 'en');
+
+In the third form, $xml_text should have no external XML file references,
+or the code is unlikely to work. Note that this has not been tested.
 
 =item process_all_lang
 

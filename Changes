@@ -1,5 +1,9 @@
 Revision history for Perl extension HTML::Template::XPath.
 
+0.11  October 23, 2006
+	- Allow the caller to provide xml in a string,
+	  rather than a filename parameter. (Simon Drabble)
+
 0.10  April 4, 2002
 	- Fixed bug with xml:lang attributes (Boris Zentner)
 	- Create parser object only if needed (Boris Zentner)

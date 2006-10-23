@@ -1,4 +1,4 @@
-HTML::Template::XPath 0.10 README
+HTML::Template::XPath 0.20 README
 =================================
 
 This module provides easy access to XML files from HTML::Template templates
